@@ -1,28 +1,58 @@
-# Kaoto examples
-Hosting example integrations provided by users
+# Account transactions
 
-# How to use
-There are a few ways to use these examples:
+This example combines a kafka topic, a postgres database, the csv format and a rest endpoint, to simulate account transactions that will be queried through Rest.
 
-## [Red Hat Dev Spaces](https://workspaces.openshift.com/#https://github.com/KaotoIO/kaoto-examples.git)
-This is the easiest way to get started with the examples. It also provides a full development environment with all the tools you need to develop and test your integrations.
+## Prerequisites
+1. A running Kafka cluster
+2. A running Postgresql database
+3. A database named `transactions`
+4. A table named `transactions` with the following structure
+    | Column name | Data type |
+    |-------------|-----------|
+    | id          | serial    |
+    | timestamp   | varchar   |
+    | account     | varchar   |
+    | amount      | float     |
 
-## [vscode.dev](https://vscode.dev/github/KaotoIO/kaoto-examples)
-This is a lightweight, browser-based version of Visual Studio Code that lets you develop entirely in the browser. It's a great way to quickly check out the examples.
+```sql
+CREATE TABLE transactions (
+    "timestamp" character varying,
+    account character varying,
+    amount bigint,
+    id integer NOT NULL
+);
 
-## Clone the repository and run the examples locally
-Alternatively, you could clone the repository and run the examples locally. After cloning the repository, you can follow the instructions from [the Kaoto's quickstart guide](https://kaoto.io/docs/quickstart/) to run the examples.
+CREATE SEQUENCE transactions_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
 
-## Index
-| Name              | Description           | Tags          |
-| ---               | ---                   | ---           |
-| [Account Transactions](account-transactions) | A set of camel routes that generates CSV-like records, submits it to a kafka topic and later on store it into a Postgresql database | # kafka #database #sql #postgresql #log |
-| [kafkaToLog](kafka-to-log)                | A camel route reading from a kafka topic and logging it to the screen | #kafka #log |
-| [OpenAPI](openapi)                | Camel routes showcasing implementations from OpenAPI contract definitions | #openapi #file #log |
-| [postgresqlToLog](postgresql-to-log)      | A camel route querying a Postgresql database and logging it to the screen | #database #sql #postgresql #log |
+ALTER TABLE ONLY transactions ALTER COLUMN id SET DEFAULT nextval('public.transactions_id_seq'::regclass);
+```
 
+## Workflow
+The load is generated using the [load-generator.camel.yaml](load-generator.camel.yaml) file, which creates CSV-like records and submits it into a kafka topic.
 
-## Supporting folder
-| Name              | Description           |
-| ---               | ---                   |
-| [compose](compose) | Holds compose files to bootstrap components that might be required to run the examples |
+Later on, the [data-ingestion.camel.yaml](data-ingestion.camel.yaml) file consume messages from that topic and stores it into a Postgres database.
+
+## How to run
+1. Open the [`data-ingestion.camel.yaml`](data-ingestion.camel.yaml) file and set the `PostgresqlDataSource` bean properties to match your Postgresql database, such as `databaseName`, `user`, `password`, `serverName`, and `portNumber`
+    1.1. This example expects to have a secret named `postgres` with the following keys:
+        * `database-name` containing the database name
+        * `database-user` containing the user name
+        * `database-password` containing the password
+2. Since this example requires the Postgresql dependency, change to the `account-transactions` folder
+```shell
+cd account-transactions
+```
+3. Run the integration using the Camel CLI extension, or by executing the following command:
+```shell
+jbang '-Dcamel.jbang.version=4.5.0' camel@apache/camel run * --dev --logging-level=info
+```
+4. In another terminal, execute the following command to retrieve records
+```shell
+curl localhost:8080
+```
